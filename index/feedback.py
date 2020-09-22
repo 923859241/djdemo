@@ -41,9 +41,7 @@ def dataClean():
     return validData, invalidData
 
 
-def test():
-    return HttpResponse("hello 8001")
-
+# 责任链头
 def dealWithOne(myStr):
     # --------------------------------------------第一层过滤--------------------------------------------
     ascllData = [chr(i) for i in range(0, 47)]
@@ -68,7 +66,12 @@ def dealWithOne(myStr):
     # 判断后输出
     if countAscall / allCount > 1 / 3 or countNum / allCount > 1 / 2:
         res = False
-    return res
+
+    if res:
+        return dealWithTow(myStr)
+    else:
+        return res
+
 
 def dealWithTow(myStr):
     # --------------------------------------------第二层过滤--------------------------------------------
@@ -82,15 +85,12 @@ def dealWithTow(myStr):
     rates = flagCount / (len(myStr) + 1e-10)
     if rates > 0.9:
         res = False
+
     return res
 
+
 def dealWithStr(myStr):
-    return dealWithOne(myStr) and dealWithTow(myStr)
-
-
-
-
-
+    return dealWithOne(myStr)
 
 
 if __name__ == "__main__":
