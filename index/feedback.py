@@ -5,13 +5,17 @@ Created on Sun Aug 16 01:34:36 2020
 @author: 92385
 """
 
+import pandas as pd
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split
 import xlrd
 import jieba
-from sklearn import feature_extraction
-from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 import jieba.posseg as pseg
-from django.http import HttpResponse
+import joblib
+import os
+
+SVMModelName = "svclassifier.m"
 
 
 def dataClean():
@@ -39,6 +43,144 @@ def dataClean():
             invalidData.append("".join(seg_list))
 
     return validData, invalidData
+
+
+def cleanData():
+    # 基本思路，重点是过滤无效反馈，留下有效反馈，所以对无法判断是否为有效反馈的时候（没有该词向量）
+    # 则默认为有效反馈
+    validData, invalidData = dataClean()
+
+    # 创建dataFrame
+    df = pd.DataFrame(columns=["ascii", "nums", "word", "class"])  # 创建一个空的dataframe
+    df.loc[0] = [1, 2, 3, 4]
+    dfi = 0
+
+    ascllData = [chr(i) for i in range(0, 47)]
+    ascllData.extend(chr(i) for i in range(58, 127))
+    ascllData.extend(['！', '@', '#', '¥', '%', '（', '）', '—', '【', '】', '「', '」',
+                      '｜', '、', '；', '：', '‘', '“', '？', '《', '》', '，', '。'])
+    numData = [chr(i) for i in range(48, 57)]
+
+    allInvalid = 0
+
+    newInvalidData = []
+
+    # 有效
+    for dataI in validData:
+        dfi_data = []
+        countAscall = 0
+        countNum = 0
+        allCount = 1
+        # 逐个词分割
+        for splitI in list(dataI):
+            # 是否在ascall内
+            allCount += 1
+            if splitI in ascllData:
+                countAscall += 1
+            if splitI in numData:
+                countNum += 1
+
+        words = pseg.cut(dataI)
+        flagCount = 0
+        for word, flag in words:
+            # print('%s %s' % (word, flag))
+            flagCount = flagCount + 1
+        rates = flagCount / (len(dataI) + 1e-10)
+
+        dfi_data.append(countAscall / allCount)
+        dfi_data.append(countNum / allCount)
+        dfi_data.append(rates)
+        dfi_data.append('1')
+
+        df.loc[dfi] = dfi_data
+        dfi = dfi + 1
+        # 判断后输出
+        if (countAscall / allCount > 1 / 3):
+            allInvalid += 1
+            # print(dataI)
+            # print(countAscall/allCount)
+            newInvalidData.append(dataI)
+
+    # 无效分析
+    for dataI in invalidData:
+        dfi_data = []
+        countAscall = 0
+        countNum = 0
+        allCount = 1
+        # 逐个词分割
+        for splitI in list(dataI):
+            # 是否在ascall内
+            allCount += 1
+            if splitI in ascllData:
+                countAscall += 1
+            if splitI in numData:
+                countNum += 1
+        words = pseg.cut(dataI)
+        flagCount = 0
+        for word, flag in words:
+            # print('%s %s' % (word, flag))
+            flagCount = flagCount + 1
+        rates = flagCount / (len(dataI) + 1e-10)
+
+        # 判断后输出
+        if (countAscall / allCount < 1):
+            allInvalid += 1
+
+            dfi_data.append(countAscall / allCount)
+            dfi_data.append(countNum / allCount)
+            dfi_data.append(rates)
+            dfi_data.append('0')
+
+            df.loc[dfi] = dfi_data
+            dfi = dfi + 1
+
+            newInvalidData.append(dataI)
+    return df
+
+
+def getFeature(myStr):
+    # 基本思路，重点是过滤无效反馈，留下有效反馈，所以对无法判断是否为有效反馈的时候（没有该词向量）
+    # 则默认为有效反馈
+    dataI = myStr
+
+    # 创建dataFrame
+    df = pd.DataFrame(columns=["ascii", "nums", "word"])  # 创建一个空的dataframe
+    df.loc[0] = [1, 2, 3]
+    dfi = 0
+
+    ascllData = [chr(i) for i in range(0, 47)]
+    ascllData.extend(chr(i) for i in range(58, 127))
+    ascllData.extend(['！', '@', '#', '¥', '%', '（', '）', '—', '【', '】', '「', '」',
+                      '｜', '、', '；', '：', '‘', '“', '？', '《', '》', '，', '。'])
+    numData = [chr(i) for i in range(48, 57)]
+
+    dfi_data = []
+    countAscall = 0
+    countNum = 0
+    allCount = 1
+    # 逐个词分割
+    for splitI in list(dataI):
+        # 是否在ascall内
+        allCount += 1
+        if splitI in ascllData:
+            countAscall += 1
+        if splitI in numData:
+            countNum += 1
+
+    words = pseg.cut(dataI)
+    flagCount = 0
+    for word, flag in words:
+        # print('%s %s' % (word, flag))
+        flagCount = flagCount + 1
+    rates = flagCount / (len(dataI) + 1e-10)
+
+    dfi_data.append(countAscall / allCount)
+    dfi_data.append(countNum / allCount)
+    dfi_data.append(rates)
+
+    df.loc[dfi] = dfi_data
+
+    return df
 
 
 # 责任链头
@@ -89,93 +231,43 @@ def dealWithTow(myStr):
     return res
 
 
+def dealWithSVM(myStr):
+    res = False
+
+    if os.path.exists(SVMModelName) is False:
+        fitSVM()
+
+    if ('svclassifier' in dir()) is False:
+        global svclassifier
+        svclassifier = joblib.load(SVMModelName)
+
+    y_pred = svclassifier.predict(getFeature(myStr))
+
+    res = y_pred[0] == "1"
+    return res
+
+
+def fitSVM():
+    validData, invalidData = dataClean()
+    wordData = cleanData()
+    # 预处理
+    X = wordData.drop('class', axis=1)
+    y = wordData['class']
+
+    # 划分训练与预测集合
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.01)
+
+    # kSVM 核选择
+    svclassifier = SVC(C=1, kernel='rbf', degree=6, class_weight=({'0': 0.2, '1': 2}))
+    svclassifier.fit(X_train, y_train)
+
+    joblib.dump(svclassifier, SVMModelName)
+
+
 def dealWithStr(myStr):
-    return dealWithOne(myStr)
+    return dealWithSVM(myStr)
 
 
 if __name__ == "__main__":
-    # 基本思路，重点是过滤无效反馈，留下有效反馈，所以对无法判断是否为有效反馈的时候（没有该词向量）
-    # 则默认为有效反馈
-    validData, invalidData = dataClean()
-
-    # 将文本中的词语转换为词频矩阵
-    vectorizer = CountVectorizer()
-    # 计算个词语出现的次数
-    XX = vectorizer.fit_transform(validData).toarray()
-    # 获取词袋中所有文本关键词
-    validWord = vectorizer.get_feature_names()
-    ascllData = [chr(i) for i in range(0, 47)]
-    ascllData.extend(chr(i) for i in range(58, 127))
-    ascllData.extend(['！', '@', '#', '¥', '%', '（', '）', '—', '【', '】', '「', '」',
-                      '｜', '、', '；', '：', '‘', '“', '？', '《', '》', '，', '。'])
-    numData = [chr(i) for i in range(48, 57)]
-
-    allInvalid = 0
-
-    newInvalidData = []
-
-    for dataI in validData:
-        countAscall = 0
-        countNum = 0
-        allCount = 1
-        # 逐个词分割
-        for splitI in list(dataI):
-            # 是否在ascall内
-            allCount += 1
-            if splitI in ascllData:
-                countAscall += 1
-            if splitI in numData:
-                countNum += 1
-
-        # 判断后输出
-        if (countAscall / allCount > 1 / 3):
-            allInvalid += 1
-            print(dataI)
-            print(countAscall / allCount)
-            newInvalidData.append(dataI)
-
-    # 对存在ascall+中文符号的码词语占总词语1/3的句子，vivo直接过滤了86.39% 有效文字过滤为0
-    # 对存在ascall+中文符号的码词语占总词语1/3的句子，meipai直接过滤了73% 有效文字过滤为0
-
-    dataRate = []
-    afterJiebaData = []
-
-    for dataI in newInvalidData:
-        words = pseg.cut(dataI)
-        flagCount = 0
-        for word, flag in words:
-            # print('%s %s' % (word, flag))
-            flagCount = flagCount + 1
-        rates = flagCount / (len(dataI) + 1e-10)
-        dataRate.append(rates)
-        if (rates < 0.9):
-            afterJiebaData.append(dataI)
-            # print(dataI)
-            # print(len(dataI))
-            # print(flagCount)
-            # print('---------------------------')
-
-    # 对存在句子词性独立的句子，vivo直接过滤了90.69% 有效文字过滤为1条文字信息为“我刚充的钱呢”，1/85
-    # 对存在句子词性独立的句子，meipai直接过滤了74.66% 有效文字过滤为0
-    # 总过滤率 84%左右
-
-    # 查看词频结果
-
-#    vectorizer = CountVectorizer()#该类会将文本中的词语转换为词频矩阵，矩阵元素a[i][j] 表示j词在i类文本下的词频
-#    transformer = TfidfTransformer()#该类会统计每个词语的tf-idf权值
-#    tfidf=transformer.fit_transform(vectorizer.fit_transform(corpus))#第一个fit_transform是计算tf-idf，第二个fit_transform是将文本转为词频矩阵
-#    word=vectorizer.get_feature_names()#获取词袋模型中的所有词语
-#    
-#    corpus=["我 来到 北京 清华大学",#第一类文本切词后的结果，词之间以空格隔开
-#		"他 来到 了 网易 杭研 大厦",#第二类文本的切词结果
-#		"小明 硕士 毕业 与 中国 科学院",#第三类文本的切词结果
-#		"我 爱 北京 天安门"]#第四类文本的切词结果
-#    vectorizer=CountVectorizer()#该类会将文本中的词语转换为词频矩阵，矩阵元素a[i][j] 表示j词在i类文本下的词频
-#    transformer=TfidfTransformer()#该类会统计每个词语的tf-idf权值
-#    tfidf=transformer.fit_transform(vectorizer.fit_transform(corpus))#第一个fit_transform是计算tf-idf，第二个fit_transform是将文本转为词频矩阵
-#    word=vectorizer.get_feature_names()#获取词袋模型中的所有词语
-#    weight=tfidf.toarray()#将tf-idf矩阵抽取出来，元素a[i][j]表示j词在i类文本中的tf-idf权重
-#    for i in range(len(weight)):#打印每类文本的tf-idf词语权重，第一个for遍历所有文本，第二个for便利某一类文本下的词语权重
-#        print("-------这里输出第",i,u"类文本的词语tf-idf权重------")
-#        for j in range(len(word)):
-#            print (word[j],weight[i][j])
+    data = dealWithSVM("sadwajdnk")
+    print(data)
