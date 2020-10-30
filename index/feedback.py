@@ -233,10 +233,11 @@ def dealWithTow(myStr):
 
 def dealWithSVM(myStr):
     res = False
-
+    print(os.path.exists(SVMModelName))
     if os.path.exists(SVMModelName) is False:
         fitSVM()
 
+    print('svclassifier' in dir())
     if ('svclassifier' in dir()) is False:
         global svclassifier
         svclassifier = joblib.load(SVMModelName)
@@ -265,7 +266,8 @@ def fitSVM():
 
 
 def dealWithStr(myStr):
-    return dealWithSVM(myStr)
+    return False
+    #return dealWithSVM(myStr)
 
 
 if __name__ == "__main__":

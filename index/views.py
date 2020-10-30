@@ -2,7 +2,10 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from index.feedback import dealWithStr
 import json
+import os
+from django.conf import settings
 
+#file_ = open(os.path.join(settings.BASE_DIR, 'index'))
 
 def index_view(request):
     resp = {
