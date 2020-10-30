@@ -10,7 +10,7 @@ from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
 import xlrd
 import jieba
-from sklearn.feature_extraction.text import CountVectorizer
+from django.conf import settings
 import jieba.posseg as pseg
 import joblib
 import os
@@ -232,20 +232,25 @@ def dealWithTow(myStr):
 
 
 def dealWithSVM(myStr):
-    res = False
-    print(os.path.exists(SVMModelName))
-    if os.path.exists(SVMModelName) is False:
-        fitSVM()
-
-    print('svclassifier' in dir())
-    if ('svclassifier' in dir()) is False:
+    res = True
+    try:
+        # print(os.path.exists(SVMModelName))
+        # if os.path.exists(SVMModelName) is False:
+        #     fitSVM()
         global svclassifier
-        svclassifier = joblib.load(SVMModelName)
+        print(os.getcwd()+"/index/"+SVMModelName)
+        svclassifier = joblib.load(os.getcwd()+"/index/"+SVMModelName)
 
-    y_pred = svclassifier.predict(getFeature(myStr))
+        # print('svclassifier' in dir())
+        # if ('svclassifier' in dir()) is False:
+        #
+        #     svclassifier = joblib.load(SVMModelName)
 
-    res = y_pred[0] == "1"
-    return res
+        y_pred = svclassifier.predict(getFeature(myStr))
+
+        res = y_pred[0] == "1"
+    finally:
+        return res
 
 
 def fitSVM():
@@ -266,10 +271,10 @@ def fitSVM():
 
 
 def dealWithStr(myStr):
-    return False
-    #return dealWithSVM(myStr)
+    #return False
+    return dealWithSVM(myStr)
 
 
 if __name__ == "__main__":
-    data = dealWithSVM("sadwajdnk")
+    data = dealWithSVM("test")
     print(data)
