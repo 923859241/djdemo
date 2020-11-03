@@ -7,17 +7,20 @@ from django.conf import settings
 from index.feedback import SVMModelName
 import base64
 
+file_ = open(os.path.join(settings.BASE_DIR, "index/" + SVMModelName))
 
-file_ = open(os.path.join(settings.BASE_DIR, "index/"+SVMModelName))
 
 def index_view(request):
     global resp
-    #解码
-    encodeData = request.GET.get('data')
+    # 解码
+    encodeData = str(request.GET.get('data'))
+    encodeData = encodeData.replace(" ", '+')
 
+    print(encodeData)
 
     try:
-        base64_decrypt = base64.b64decode(encodeData.encode('utf-8'))
+        base64_decrypt = base64.b64decode(encodeData)
+        print(base64_decrypt)
         decodeData = str(base64_decrypt, 'utf-8')
 
         print("BASE64解密串（UTF-8）:\n", decodeData)
@@ -25,15 +28,17 @@ def index_view(request):
             'code': '200',
             'message': 'success',
             'data': {
-                'default': str(dealWithStr( decodeData )),
+                'meaningful': str(dealWithStr(decodeData)),
             }
         }
+        print("结果:\n", resp['data'])
     except Exception:
+        print(Exception.args)
         resp = {
             'code': '200',
             'message': 'failure',
             'data': {
-                'default': "True",
+                'meaningful': "True",
             }
         }
     finally:
@@ -44,4 +49,9 @@ def index_view(request):
         return response
 
 
+if __name__ == '__main__':
+    encodeData = '77yf44CBOu+8geWugw=='
+    base64_decrypt = base64.b64decode(encodeData)
+    decodeData = str(base64_decrypt, 'utf-8')
+    print(decodeData)
 # Create your views here.
